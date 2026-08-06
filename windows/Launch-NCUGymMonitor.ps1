@@ -60,6 +60,11 @@ if (-not (Test-Path -LiteralPath $monitorEntryPoint -PathType Leaf)) {
     Stop-Launcher -ExitCode 12 -Message 'The Monitor entry point is missing from the checkout. Restore the checkout, then rerun Setup.'
 }
 
+$instanceModule = Join-Path $ProjectRoot 'monitor_instance.py'
+if (-not (Test-Path -LiteralPath $instanceModule -PathType Leaf)) {
+    Stop-Launcher -ExitCode 12 -Message 'The Monitor instance module is missing from the checkout. Restore the checkout, then rerun Setup.'
+}
+
 $widgetEntryPoint = Join-Path $ProjectRoot 'gym.pyw'
 if (-not (Test-Path -LiteralPath $widgetEntryPoint -PathType Leaf)) {
     Stop-Launcher -ExitCode 12 -Message 'The Widget entry point is missing from the checkout. Restore the checkout, then rerun Setup.'
@@ -79,13 +84,18 @@ if (-not $runtimeImports) {
     Stop-Launcher -ExitCode 13 -Message 'The Widget runtime dependency contract has no import mappings. Restore the checkout, then rerun Setup.'
 }
 $importCode = ($runtimeImports | ForEach-Object { "import $_" }) -join '; '
-$dependencyCheck = Start-Process `
-    -FilePath $windowedPython `
-    -ArgumentList @('-c', "`"$importCode`"") `
-    -WorkingDirectory $ProjectRoot `
-    -WindowStyle Hidden `
-    -Wait `
-    -PassThru
+try {
+    $dependencyCheck = Start-Process `
+        -FilePath $windowedPython `
+        -ArgumentList @('-c', "`"$importCode`"") `
+        -WorkingDirectory $ProjectRoot `
+        -WindowStyle Hidden `
+        -Wait `
+        -PassThru
+}
+catch {
+    Stop-Launcher -ExitCode 12 -Message 'The Project environment windowed Python could not start. Rerun Setup to repair it.'
+}
 
 if ($dependencyCheck.ExitCode -ne 0) {
     Stop-Launcher -ExitCode 13 -Message 'The Widget runtime dependencies are missing. Rerun Setup to repair the Project environment.'
@@ -96,22 +106,32 @@ if ($NoDialog) {
     $launchArguments += '--no-dialog'
 }
 if ($Wait) {
-    $monitorProcess = Start-Process `
-        -FilePath $windowedPython `
-        -ArgumentList $launchArguments `
-        -WorkingDirectory $ProjectRoot `
-        -WindowStyle Hidden `
-        -Wait `
-        -PassThru
+    try {
+        $monitorProcess = Start-Process `
+            -FilePath $windowedPython `
+            -ArgumentList $launchArguments `
+            -WorkingDirectory $ProjectRoot `
+            -WindowStyle Hidden `
+            -Wait `
+            -PassThru
+    }
+    catch {
+        Stop-Launcher -ExitCode 14 -Message 'The Widget process could not start. Rerun Setup; if the problem continues, restore the checkout.'
+    }
 
     if ($monitorProcess.ExitCode -ne 0) {
         Stop-Launcher -ExitCode 14 -Message 'The Widget failed during startup. Rerun Setup; if the problem continues, restore the checkout.'
     }
 }
 else {
-    Start-Process `
-        -FilePath $windowedPython `
-        -ArgumentList $launchArguments `
-        -WorkingDirectory $ProjectRoot `
-        -WindowStyle Hidden | Out-Null
+    try {
+        Start-Process `
+            -FilePath $windowedPython `
+            -ArgumentList $launchArguments `
+            -WorkingDirectory $ProjectRoot `
+            -WindowStyle Hidden | Out-Null
+    }
+    catch {
+        Stop-Launcher -ExitCode 14 -Message 'The Widget process could not start. Rerun Setup; if the problem continues, restore the checkout.'
+    }
 }

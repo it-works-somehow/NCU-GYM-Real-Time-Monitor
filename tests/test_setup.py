@@ -257,13 +257,49 @@ class SetupTests(unittest.TestCase):
             self.assertEqual(version_check.returncode, 0, version_check.stderr)
             self.assertTrue((desktop / "NCU Gym Monitor.lnk").is_file())
 
+    def test_environment_health_check_rejects_a_base_interpreter(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            test_root = Path(temp_dir)
+            project = test_root / "checkout"
+            desktop = test_root / "Desktop"
+            fake_scripts = project / ".venv" / "Scripts"
+            base_python = Path(sys.base_prefix) / "python.exe"
+            base_dll = Path(sys.base_prefix) / (
+                f"python{sys.version_info.major}{sys.version_info.minor}.dll"
+            )
+            self._create_checkout(project)
+            desktop.mkdir()
+            fake_scripts.mkdir(parents=True)
+            shutil.copy2(base_python, fake_scripts / "python.exe")
+            shutil.copy2(base_dll, fake_scripts / base_dll.name)
+
+            result = self._run_setup(project, desktop)
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            health_check = subprocess.run(
+                [
+                    str(fake_scripts / "python.exe"),
+                    "-c",
+                    "import sys; raise SystemExit(0 if sys.prefix != sys.base_prefix else 1)",
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+            self.assertEqual(health_check.returncode, 0, health_check.stderr)
+            self.assertTrue((fake_scripts / "pythonw.exe").is_file())
+
     def test_codex_python_is_rejected_for_normal_setup(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             test_root = Path(temp_dir)
             project = test_root / "checkout"
             desktop = test_root / "Desktop"
+            codex_python = test_root / ".codex" / "python.exe"
             self._create_checkout(project)
             desktop.mkdir()
+            codex_python.parent.mkdir()
+            os.link(sys.executable, codex_python)
 
             result = subprocess.run(
                 [
@@ -278,7 +314,7 @@ class SetupTests(unittest.TestCase):
                     "-DesktopDirectory",
                     str(desktop),
                     "-PythonPath",
-                    sys.executable,
+                    str(codex_python),
                 ],
                 capture_output=True,
                 text=True,
@@ -301,6 +337,7 @@ class SetupTests(unittest.TestCase):
             project / "assets" / "ncu-gym-monitor.ico",
         )
         (project / "monitor_entry.pyw").write_text("pass\n", encoding="utf-8")
+        (project / "monitor_instance.py").write_text("pass\n", encoding="utf-8")
         (project / "gym.pyw").write_text("pass\n", encoding="utf-8")
         (project / "requirements-runtime.txt").write_text("", encoding="utf-8")
 

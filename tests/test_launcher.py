@@ -1,4 +1,6 @@
+import ctypes
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -40,6 +42,22 @@ class LauncherTests(unittest.TestCase):
         self.assertIn("windowed Python", result.stderr)
         self.assertIn("Setup", result.stderr)
 
+    def test_unexecutable_windowed_python_recommends_rerunning_setup(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            pythonw = project / ".venv" / "Scripts" / "pythonw.exe"
+            pythonw.parent.mkdir(parents=True)
+            pythonw.write_text("not an executable", encoding="utf-8")
+            self._write_launcher_entry_points(project)
+            (project / "gym.pyw").write_text("pass\n", encoding="utf-8")
+            self._write_runtime_contract(project)
+
+            result = self._launch(project)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("windowed Python could not start", result.stderr)
+        self.assertIn("Setup", result.stderr)
+
     def test_missing_widget_entry_point_is_reported_before_launch(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)
@@ -47,12 +65,49 @@ class LauncherTests(unittest.TestCase):
             pythonw.parent.mkdir(parents=True)
             pythonw.touch()
             (project / "monitor_entry.pyw").write_text("pass\n", encoding="utf-8")
+            (project / "monitor_instance.py").write_text("pass\n", encoding="utf-8")
 
             result = self._launch(project)
 
         self.assertNotEqual(result.returncode, 0)
         self.assertIn("Widget entry point", result.stderr)
         self.assertIn("checkout", result.stderr)
+
+    def test_missing_instance_module_is_reported_before_launch(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            self._create_project_environment(project)
+            (project / "monitor_entry.pyw").write_text("pass\n", encoding="utf-8")
+            (project / "gym.pyw").write_text("pass\n", encoding="utf-8")
+
+            result = self._launch(project)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("instance module", result.stderr)
+        self.assertIn("checkout", result.stderr)
+
+    @unittest.skipUnless(sys.platform == "win32", "native dialog test requires Windows")
+    def test_missing_checkout_shows_native_error_dialog(self):
+        missing_checkout = Path(tempfile.gettempdir()) / "ncu-gym-native-dialog-missing"
+        process = subprocess.Popen(
+            [
+                "powershell.exe", "-NoProfile", "-ExecutionPolicy", "Bypass",
+                "-File", str(LAUNCHER), "-ProjectRoot", str(missing_checkout),
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+        )
+        try:
+            window = self._wait_for_process_window(process.pid, "NCU Gym Monitor")
+            self.assertTrue(window, "native startup error dialog did not appear")
+            ctypes.windll.user32.SendMessageW(window, 0x0010, 0, 0)
+            self.assertNotEqual(process.wait(timeout=5), 0)
+            process.communicate(timeout=1)
+        finally:
+            if process.poll() is None:
+                process.kill()
+                process.wait(timeout=5)
 
     def test_missing_runtime_dependency_recommends_rerunning_setup(self):
         with tempfile.TemporaryDirectory() as temp_dir:
@@ -166,15 +221,14 @@ class LauncherTests(unittest.TestCase):
 
     def _add_runtime_import_stubs(self, project: Path) -> None:
         self._write_runtime_contract(project)
-        for module_name in ("requests", "bs4", "PIL"):
+        contract = (project / "requirements-runtime.txt").read_text(encoding="utf-8")
+        for module_name in re.findall(r"#\s*import=([A-Za-z_][A-Za-z0-9_.]*)", contract):
             (project / f"{module_name}.py").write_text("", encoding="utf-8")
 
     def _write_runtime_contract(self, project: Path) -> None:
-        (project / "requirements-runtime.txt").write_text(
-            "requests # import=requests\n"
-            "beautifulsoup4 # import=bs4\n"
-            "pillow # import=PIL\n",
-            encoding="utf-8",
+        shutil.copy2(
+            PROJECT_ROOT / "requirements-runtime.txt",
+            project / "requirements-runtime.txt",
         )
 
     def _write_launcher_entry_points(self, project: Path) -> None:
@@ -184,6 +238,31 @@ class LauncherTests(unittest.TestCase):
             "if marker: Path(marker).write_text('launched', encoding='utf-8')\n",
             encoding="utf-8",
         )
+        (project / "monitor_instance.py").write_text("pass\n", encoding="utf-8")
+
+    def _wait_for_process_window(self, process_id: int, title: str) -> int:
+        deadline = __import__("time").monotonic() + 8
+        while __import__("time").monotonic() < deadline:
+            matches: list[int] = []
+            callback_type = ctypes.WINFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+
+            def inspect_window(window: int, _parameter: int) -> bool:
+                owner = ctypes.c_ulong()
+                ctypes.windll.user32.GetWindowThreadProcessId(window, ctypes.byref(owner))
+                if owner.value != process_id:
+                    return True
+                length = ctypes.windll.user32.GetWindowTextLengthW(window)
+                buffer = ctypes.create_unicode_buffer(length + 1)
+                ctypes.windll.user32.GetWindowTextW(window, buffer, length + 1)
+                if buffer.value == title:
+                    matches.append(window)
+                return True
+
+            ctypes.windll.user32.EnumWindows(callback_type(inspect_window), 0)
+            if matches:
+                return matches[0]
+            __import__("time").sleep(0.1)
+        return 0
 
 
 if __name__ == "__main__":

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import os
 import tempfile
 from pathlib import Path
@@ -26,9 +27,11 @@ class MonitorInstance:
 
         try:
             _lock(handle)
-        except OSError:
+        except OSError as error:
             handle.close()
-            return None
+            if error.errno in (errno.EACCES, errno.EAGAIN):
+                return None
+            raise
 
         return cls(handle)
 

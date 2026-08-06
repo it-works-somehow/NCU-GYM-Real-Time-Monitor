@@ -117,10 +117,11 @@ try {
 
     $launcherPath = Join-Path $ProjectRoot 'windows\Launch-NCUGymMonitor.ps1'
     $monitorEntryPath = Join-Path $ProjectRoot 'monitor_entry.pyw'
+    $instanceModulePath = Join-Path $ProjectRoot 'monitor_instance.py'
     $widgetEntryPath = Join-Path $ProjectRoot 'gym.pyw'
     $requirementsPath = Join-Path $ProjectRoot 'requirements-runtime.txt'
     $iconPath = Join-Path $ProjectRoot 'assets\ncu-gym-monitor.ico'
-    foreach ($requiredPath in @($launcherPath, $monitorEntryPath, $widgetEntryPath, $requirementsPath, $iconPath)) {
+    foreach ($requiredPath in @($launcherPath, $monitorEntryPath, $instanceModulePath, $widgetEntryPath, $requirementsPath, $iconPath)) {
         if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
             throw "The checkout is incomplete. Missing: $requiredPath"
         }
@@ -211,7 +212,7 @@ try {
     $environmentHealthy = $false
     if (Test-Path -LiteralPath $environmentPython -PathType Leaf) {
         try {
-            & $environmentPython -c 'import sys; raise SystemExit(0 if sys.prefix == sys.base_prefix else 0)'
+            & $environmentPython -c 'import sys; raise SystemExit(0 if sys.prefix != sys.base_prefix else 1)'
             $environmentHealthy = $LASTEXITCODE -eq 0
         }
         catch {

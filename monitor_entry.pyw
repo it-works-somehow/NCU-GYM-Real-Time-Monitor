@@ -2,13 +2,8 @@
 
 from __future__ import annotations
 
-import ctypes
-import runpy
 import sys
-import time
 from pathlib import Path
-
-from monitor_instance import MonitorInstance
 
 
 PROJECT_ROOT = Path(__file__).resolve().parent
@@ -16,29 +11,39 @@ WIDGET_ENTRY = PROJECT_ROOT / "gym.pyw"
 
 
 def show_startup_error(message: str) -> None:
+    import ctypes
+
     ctypes.windll.user32.MessageBoxW(0, message, "NCU Gym Monitor", 0x10)
-
-
-def run_instance_probe(arguments: list[str]) -> int:
-    marker = Path(arguments[0])
-    hold_seconds = float(arguments[1])
-    with marker.open("a", encoding="utf-8") as marker_file:
-        marker_file.write("started\n")
-    time.sleep(hold_seconds)
-    return 0
 
 
 def main(arguments: list[str]) -> int:
     no_dialog = "--no-dialog" in arguments
-    monitor_instance = MonitorInstance.try_acquire()
+    try:
+        import runpy
+
+        from monitor_instance import MonitorInstance
+    except Exception as error:
+        if not no_dialog:
+            show_startup_error(
+                "The Monitor startup files are missing or damaged. Restore the "
+                f"checkout, then rerun Setup.\n\nDetails: {error}"
+            )
+        return 14
+
+    try:
+        monitor_instance = MonitorInstance.try_acquire()
+    except Exception as error:
+        if not no_dialog:
+            show_startup_error(
+                "The Monitor instance guard could not start. Rerun Setup; if "
+                f"the problem continues, restore the checkout.\n\nDetails: {error}"
+            )
+        return 14
+
     if monitor_instance is None:
         return 0
 
     try:
-        if "--instance-probe" in arguments:
-            probe_index = arguments.index("--instance-probe")
-            return run_instance_probe(arguments[probe_index + 1 : probe_index + 3])
-
         try:
             runpy.run_path(str(WIDGET_ENTRY), run_name="__main__")
             return 0
