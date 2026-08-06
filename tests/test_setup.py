@@ -196,7 +196,7 @@ class SetupTests(unittest.TestCase):
             result = self._run_setup(project, desktop, python_path=str(unsuitable_python))
 
             self.assertNotEqual(result.returncode, 0)
-            self.assertIn("Python validation", result.stderr)
+            self.assertIn("Python discovery", result.stderr)
             self.assertIn("Python 3.10", result.stderr)
             self.assertFalse((project / ".venv").exists())
 
@@ -221,6 +221,7 @@ class SetupTests(unittest.TestCase):
                     str(desktop),
                     "-PythonPath",
                     sys.executable,
+                    "-TestMode",
                 ],
                 capture_output=True,
                 text=True,
@@ -231,6 +232,62 @@ class SetupTests(unittest.TestCase):
             self.assertEqual(result.returncode, 0, result.stderr)
             shortcut = self._read_shortcut(desktop / "NCU Gym Monitor.lnk")
             self.assertEqual(Path(shortcut["WorkingDirectory"]), project)
+
+    def test_damaged_project_environment_is_recreated(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            test_root = Path(temp_dir)
+            project = test_root / "checkout"
+            desktop = test_root / "Desktop"
+            self._create_checkout(project)
+            desktop.mkdir()
+            damaged_python = project / ".venv" / "Scripts" / "python.exe"
+            damaged_python.parent.mkdir(parents=True)
+            damaged_python.write_text("damaged", encoding="utf-8")
+
+            result = self._run_setup(project, desktop)
+
+            self.assertEqual(result.returncode, 0, result.stderr)
+            version_check = subprocess.run(
+                [str(damaged_python), "-c", "import sys; print(sys.version_info[:2])"],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+            self.assertEqual(version_check.returncode, 0, version_check.stderr)
+            self.assertTrue((desktop / "NCU Gym Monitor.lnk").is_file())
+
+    def test_codex_python_is_rejected_for_normal_setup(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            test_root = Path(temp_dir)
+            project = test_root / "checkout"
+            desktop = test_root / "Desktop"
+            self._create_checkout(project)
+            desktop.mkdir()
+
+            result = subprocess.run(
+                [
+                    "powershell.exe",
+                    "-NoProfile",
+                    "-ExecutionPolicy",
+                    "Bypass",
+                    "-File",
+                    str(SETUP),
+                    "-ProjectRoot",
+                    str(project),
+                    "-DesktopDirectory",
+                    str(desktop),
+                    "-PythonPath",
+                    sys.executable,
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10,
+                check=False,
+            )
+
+            self.assertNotEqual(result.returncode, 0)
+            self.assertIn("Codex-managed runtime", result.stderr)
 
     def _create_checkout(self, project: Path) -> None:
         (project / "windows").mkdir(parents=True)
@@ -243,6 +300,7 @@ class SetupTests(unittest.TestCase):
             PROJECT_ROOT / "assets" / "ncu-gym-monitor.ico",
             project / "assets" / "ncu-gym-monitor.ico",
         )
+        (project / "monitor_entry.pyw").write_text("pass\n", encoding="utf-8")
         (project / "gym.pyw").write_text("pass\n", encoding="utf-8")
         (project / "requirements-runtime.txt").write_text("", encoding="utf-8")
 
@@ -268,7 +326,7 @@ class SetupTests(unittest.TestCase):
                 str(desktop),
             ]
         if python_path is not None:
-            arguments.extend(("-PythonPath", python_path))
+            arguments.extend(("-PythonPath", python_path, "-TestMode"))
         arguments.extend(extra_args)
         return subprocess.run(
             arguments,

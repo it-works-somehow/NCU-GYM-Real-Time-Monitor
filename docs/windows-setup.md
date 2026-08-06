@@ -18,8 +18,9 @@ Setup operates only for the current Windows account. It performs these steps:
 4. Install only the dependencies declared in `requirements-runtime.txt`.
 5. Create or repair the **NCU Gym Monitor** Desktop shortcut.
 
-Normal launches use the Project environment's windowed Python executable. Only
-the Widget appears; no command prompt remains open.
+Normal launches use the Project environment's windowed Python executable and the
+single-instance `monitor_entry.pyw` entry point. Only the Widget appears; no
+command prompt remains open.
 
 ## Repair
 

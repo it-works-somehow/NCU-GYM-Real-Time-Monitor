@@ -40,25 +40,64 @@ function Resolve-RegularPython {
         if (-not (Test-Path -LiteralPath $PythonPath -PathType Leaf)) {
             throw "The requested Python executable does not exist: $PythonPath"
         }
-        return (Resolve-Path -LiteralPath $PythonPath).Path
+        $explicitPython = (Resolve-Path -LiteralPath $PythonPath).Path
+        if (-not $TestMode -and $explicitPython -match '[\\/](\.cache[\\/]codex-runtimes|\.codex)[\\/]') {
+            throw 'A Codex-managed runtime cannot be used as the regular Python installation.'
+        }
+        if (-not (Test-SuitableRegularPython -Candidate $explicitPython -AllowCodex:$TestMode)) {
+            throw 'The requested Python is not a suitable regular Python 3.10 or newer installation.'
+        }
+        return $explicitPython
     }
 
+    $candidates = [System.Collections.Generic.List[string]]::new()
     $command = Get-Command python.exe -ErrorAction SilentlyContinue
-    if ($command -and $command.Source -notlike '*WindowsApps*') {
-        return $command.Source
+    if ($command) {
+        $candidates.Add($command.Source)
     }
 
     $pythonInstallRoot = Join-Path $env:LOCALAPPDATA 'Programs\Python'
     if (Test-Path -LiteralPath $pythonInstallRoot -PathType Container) {
-        $candidate = Get-ChildItem -LiteralPath $pythonInstallRoot -Filter python.exe -File -Recurse |
+        Get-ChildItem -LiteralPath $pythonInstallRoot -Filter python.exe -File -Recurse -ErrorAction SilentlyContinue |
             Sort-Object FullName -Descending |
-            Select-Object -First 1
-        if ($candidate) {
-            return $candidate.FullName
+            ForEach-Object { $candidates.Add($_.FullName) }
+    }
+
+    foreach ($candidate in ($candidates | Select-Object -Unique)) {
+        if (Test-SuitableRegularPython -Candidate $candidate) {
+            return (Resolve-Path -LiteralPath $candidate).Path
         }
     }
 
     return $null
+}
+
+function Test-SuitableRegularPython {
+    param(
+        [Parameter(Mandatory)]
+        [string]$Candidate,
+
+        [Parameter()]
+        [switch]$AllowCodex
+    )
+
+    if (-not (Test-Path -LiteralPath $Candidate -PathType Leaf)) {
+        return $false
+    }
+    if ($Candidate -like '*WindowsApps*') {
+        return $false
+    }
+    if (-not $AllowCodex -and $Candidate -match '[\\/](\.cache[\\/]codex-runtimes|\.codex)[\\/]') {
+        return $false
+    }
+
+    try {
+        & $Candidate -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 10) else 1)'
+        return $LASTEXITCODE -eq 0
+    }
+    catch {
+        return $false
+    }
 }
 
 try {
@@ -77,9 +116,11 @@ try {
     }
 
     $launcherPath = Join-Path $ProjectRoot 'windows\Launch-NCUGymMonitor.ps1'
+    $monitorEntryPath = Join-Path $ProjectRoot 'monitor_entry.pyw'
+    $widgetEntryPath = Join-Path $ProjectRoot 'gym.pyw'
     $requirementsPath = Join-Path $ProjectRoot 'requirements-runtime.txt'
     $iconPath = Join-Path $ProjectRoot 'assets\ncu-gym-monitor.ico'
-    foreach ($requiredPath in @($launcherPath, $requirementsPath, $iconPath)) {
+    foreach ($requiredPath in @($launcherPath, $monitorEntryPath, $widgetEntryPath, $requirementsPath, $iconPath)) {
         if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
             throw "The checkout is incomplete. Missing: $requiredPath"
         }
@@ -167,7 +208,27 @@ try {
     $stage = 'Project environment creation'
     $environmentPath = Join-Path $ProjectRoot '.venv'
     $environmentPython = Join-Path $environmentPath 'Scripts\python.exe'
-    if (-not (Test-Path -LiteralPath $environmentPython -PathType Leaf)) {
+    $environmentHealthy = $false
+    if (Test-Path -LiteralPath $environmentPython -PathType Leaf) {
+        try {
+            & $environmentPython -c 'import sys; raise SystemExit(0 if sys.prefix == sys.base_prefix else 0)'
+            $environmentHealthy = $LASTEXITCODE -eq 0
+        }
+        catch {
+            $environmentHealthy = $false
+        }
+    }
+
+    if (-not $environmentHealthy) {
+        if (Test-Path -LiteralPath $environmentPath) {
+            $normalizedProjectRoot = [System.IO.Path]::GetFullPath($ProjectRoot).TrimEnd('\')
+            $normalizedEnvironmentPath = [System.IO.Path]::GetFullPath($environmentPath).TrimEnd('\')
+            $expectedEnvironmentPath = (Join-Path $normalizedProjectRoot '.venv').TrimEnd('\')
+            if ($normalizedEnvironmentPath -ne $expectedEnvironmentPath) {
+                throw 'Refusing to repair a Project environment outside the checkout.'
+            }
+            Remove-Item -LiteralPath $normalizedEnvironmentPath -Recurse -Force
+        }
         & $resolvedPython -m venv $environmentPath
         if ($LASTEXITCODE -ne 0) {
             throw 'Python could not create the Project environment.'

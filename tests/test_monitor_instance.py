@@ -7,7 +7,7 @@ from pathlib import Path
 
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-MONITOR_ENTRY = PROJECT_ROOT / "gym.pyw"
+MONITOR_ENTRY = PROJECT_ROOT / "monitor_entry.pyw"
 
 
 class MonitorInstanceTests(unittest.TestCase):

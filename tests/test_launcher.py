@@ -21,12 +21,32 @@ class LauncherTests(unittest.TestCase):
         self.assertIn("Project environment", result.stderr)
         self.assertIn("Setup", result.stderr)
 
+    def test_missing_checkout_is_reported(self):
+        missing_checkout = Path(tempfile.gettempdir()) / "ncu-gym-missing-checkout"
+        result = self._launch(missing_checkout)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("checkout is missing", result.stderr)
+        self.assertIn("Setup", result.stderr)
+
+    def test_missing_windowed_python_is_reported(self):
+        with tempfile.TemporaryDirectory() as temp_dir:
+            project = Path(temp_dir)
+            (project / ".venv" / "Scripts").mkdir(parents=True)
+
+            result = self._launch(project)
+
+        self.assertNotEqual(result.returncode, 0)
+        self.assertIn("windowed Python", result.stderr)
+        self.assertIn("Setup", result.stderr)
+
     def test_missing_widget_entry_point_is_reported_before_launch(self):
         with tempfile.TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)
             pythonw = project / ".venv" / "Scripts" / "pythonw.exe"
             pythonw.parent.mkdir(parents=True)
             pythonw.touch()
+            (project / "monitor_entry.pyw").write_text("pass\n", encoding="utf-8")
 
             result = self._launch(project)
 
@@ -38,7 +58,9 @@ class LauncherTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)
             self._create_project_environment(project)
+            self._write_launcher_entry_points(project)
             (project / "gym.pyw").write_text("pass\n", encoding="utf-8")
+            self._write_runtime_contract(project)
 
             result = self._launch(project)
 
@@ -50,6 +72,7 @@ class LauncherTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp_dir:
             project = Path(temp_dir)
             self._create_project_environment(project)
+            self._write_launcher_entry_points(project)
             self._add_runtime_import_stubs(project)
             marker = project / "launched.txt"
             (project / "gym.pyw").write_text(
@@ -74,6 +97,7 @@ class LauncherTests(unittest.TestCase):
             copied_launcher = project / "windows" / LAUNCHER.name
             shutil.copy2(LAUNCHER, copied_launcher)
             self._create_project_environment(project)
+            self._write_launcher_entry_points(project)
             self._add_runtime_import_stubs(project)
             marker = project / "launched.txt"
             (project / "gym.pyw").write_text(
@@ -141,8 +165,25 @@ class LauncherTests(unittest.TestCase):
         )
 
     def _add_runtime_import_stubs(self, project: Path) -> None:
+        self._write_runtime_contract(project)
         for module_name in ("requests", "bs4", "PIL"):
             (project / f"{module_name}.py").write_text("", encoding="utf-8")
+
+    def _write_runtime_contract(self, project: Path) -> None:
+        (project / "requirements-runtime.txt").write_text(
+            "requests # import=requests\n"
+            "beautifulsoup4 # import=bs4\n"
+            "pillow # import=PIL\n",
+            encoding="utf-8",
+        )
+
+    def _write_launcher_entry_points(self, project: Path) -> None:
+        (project / "monitor_entry.pyw").write_text(
+            "import os\nfrom pathlib import Path\n"
+            "marker = os.environ.get('NCU_GYM_TEST_MARKER')\n"
+            "if marker: Path(marker).write_text('launched', encoding='utf-8')\n",
+            encoding="utf-8",
+        )
 
 
 if __name__ == "__main__":

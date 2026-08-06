@@ -45,9 +45,19 @@ if (-not (Test-Path -LiteralPath $ProjectRoot -PathType Container)) {
     Stop-Launcher -ExitCode 10 -Message 'The NCU Gym Monitor checkout is missing. Restore it, then rerun Setup.'
 }
 
-$windowedPython = Join-Path $ProjectRoot '.venv\Scripts\pythonw.exe'
-if (-not (Test-Path -LiteralPath $windowedPython -PathType Leaf)) {
+$projectEnvironment = Join-Path $ProjectRoot '.venv'
+if (-not (Test-Path -LiteralPath $projectEnvironment -PathType Container)) {
     Stop-Launcher -ExitCode 11 -Message 'The Project environment is missing. Rerun Setup to repair it.'
+}
+
+$windowedPython = Join-Path $projectEnvironment 'Scripts\pythonw.exe'
+if (-not (Test-Path -LiteralPath $windowedPython -PathType Leaf)) {
+    Stop-Launcher -ExitCode 12 -Message 'The Project environment windowed Python is missing. Rerun Setup to repair it.'
+}
+
+$monitorEntryPoint = Join-Path $ProjectRoot 'monitor_entry.pyw'
+if (-not (Test-Path -LiteralPath $monitorEntryPoint -PathType Leaf)) {
+    Stop-Launcher -ExitCode 12 -Message 'The Monitor entry point is missing from the checkout. Restore the checkout, then rerun Setup.'
 }
 
 $widgetEntryPoint = Join-Path $ProjectRoot 'gym.pyw'
@@ -55,9 +65,23 @@ if (-not (Test-Path -LiteralPath $widgetEntryPoint -PathType Leaf)) {
     Stop-Launcher -ExitCode 12 -Message 'The Widget entry point is missing from the checkout. Restore the checkout, then rerun Setup.'
 }
 
+$requirementsPath = Join-Path $ProjectRoot 'requirements-runtime.txt'
+if (-not (Test-Path -LiteralPath $requirementsPath -PathType Leaf)) {
+    Stop-Launcher -ExitCode 13 -Message 'The Widget runtime dependency contract is missing. Restore the checkout, then rerun Setup.'
+}
+
+$runtimeImports = Get-Content -LiteralPath $requirementsPath | ForEach-Object {
+    if ($_ -match '#\s*import=([A-Za-z_][A-Za-z0-9_.]*)') {
+        $Matches[1]
+    }
+}
+if (-not $runtimeImports) {
+    Stop-Launcher -ExitCode 13 -Message 'The Widget runtime dependency contract has no import mappings. Restore the checkout, then rerun Setup.'
+}
+$importCode = ($runtimeImports | ForEach-Object { "import $_" }) -join '; '
 $dependencyCheck = Start-Process `
     -FilePath $windowedPython `
-    -ArgumentList @('-c', '"import requests, bs4, PIL"') `
+    -ArgumentList @('-c', "`"$importCode`"") `
     -WorkingDirectory $ProjectRoot `
     -WindowStyle Hidden `
     -Wait `
@@ -67,7 +91,10 @@ if ($dependencyCheck.ExitCode -ne 0) {
     Stop-Launcher -ExitCode 13 -Message 'The Widget runtime dependencies are missing. Rerun Setup to repair the Project environment.'
 }
 
-$launchArguments = @('"' + $widgetEntryPoint + '"')
+$launchArguments = @('"' + $monitorEntryPoint + '"')
+if ($NoDialog) {
+    $launchArguments += '--no-dialog'
+}
 if ($Wait) {
     $monitorProcess = Start-Process `
         -FilePath $windowedPython `

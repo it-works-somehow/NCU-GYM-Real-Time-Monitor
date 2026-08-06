@@ -106,7 +106,7 @@ For development without the Desktop shortcut:
 ```powershell
 python -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements-runtime.txt
-.\.venv\Scripts\pythonw.exe .\gym.pyw
+.\.venv\Scripts\pythonw.exe .\monitor_entry.pyw
 ```
 
 Setup does not create a Windows login startup entry, scheduled task, service, or
