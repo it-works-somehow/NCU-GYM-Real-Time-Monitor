@@ -6,6 +6,38 @@
 ## larger than 45 -> red
 ## less than 25 -> the numbers blink, which means GO to GYM!
 
+import sys
+import time
+from pathlib import Path
+
+from monitor_instance import MonitorInstance
+
+
+def run_instance_probe(arguments):
+    marker = Path(arguments[0])
+    hold_seconds = float(arguments[1])
+    monitor_instance = MonitorInstance.try_acquire()
+    if monitor_instance is None:
+        return 0
+    try:
+        with marker.open("a", encoding="utf-8") as marker_file:
+            marker_file.write("started\n")
+        time.sleep(hold_seconds)
+        return 0
+    finally:
+        monitor_instance.release()
+
+
+if "--instance-probe" in sys.argv:
+    probe_index = sys.argv.index("--instance-probe")
+    raise SystemExit(run_instance_probe(sys.argv[probe_index + 1 : probe_index + 3]))
+
+
+MONITOR_INSTANCE = MonitorInstance.try_acquire()
+if MONITOR_INSTANCE is None:
+    raise SystemExit(0)
+
+
 import csv
 import io
 import os
@@ -389,4 +421,7 @@ animate_gif()
 refresh_data()
 blink_loop()
 
-root.mainloop()
+try:
+    root.mainloop()
+finally:
+    MONITOR_INSTANCE.release()
