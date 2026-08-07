@@ -116,12 +116,13 @@ try {
     }
 
     $launcherPath = Join-Path $ProjectRoot 'windows\Launch-NCUGymMonitor.ps1'
+    $silentLauncherPath = Join-Path $ProjectRoot 'windows\Launch-NCUGymMonitor.vbs'
     $monitorEntryPath = Join-Path $ProjectRoot 'monitor_entry.pyw'
     $instanceModulePath = Join-Path $ProjectRoot 'monitor_instance.py'
     $widgetEntryPath = Join-Path $ProjectRoot 'gym.pyw'
     $requirementsPath = Join-Path $ProjectRoot 'requirements-runtime.txt'
     $iconPath = Join-Path $ProjectRoot 'assets\ncu-gym-monitor.ico'
-    foreach ($requiredPath in @($launcherPath, $monitorEntryPath, $instanceModulePath, $widgetEntryPath, $requirementsPath, $iconPath)) {
+    foreach ($requiredPath in @($launcherPath, $silentLauncherPath, $monitorEntryPath, $instanceModulePath, $widgetEntryPath, $requirementsPath, $iconPath)) {
         if (-not (Test-Path -LiteralPath $requiredPath -PathType Leaf)) {
             throw "The checkout is incomplete. Missing: $requiredPath"
         }
@@ -246,8 +247,8 @@ try {
     $shortcutPath = Join-Path $DesktopDirectory 'NCU Gym Monitor.lnk'
     $shell = New-Object -ComObject WScript.Shell
     $shortcut = $shell.CreateShortcut($shortcutPath)
-    $shortcut.TargetPath = (Get-Command powershell.exe).Source
-    $shortcut.Arguments = "-NoProfile -ExecutionPolicy Bypass -WindowStyle Hidden -File `"$launcherPath`""
+    $shortcut.TargetPath = (Get-Command wscript.exe).Source
+    $shortcut.Arguments = "`"$silentLauncherPath`""
     $shortcut.WorkingDirectory = $ProjectRoot
     $shortcut.IconLocation = "$iconPath,0"
     $shortcut.Description = 'Launch NCU Gym Monitor'

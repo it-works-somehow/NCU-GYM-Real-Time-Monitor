@@ -18,9 +18,11 @@ Setup operates only for the current Windows account. It performs these steps:
 4. Install only the dependencies declared in `requirements-runtime.txt`.
 5. Create or repair the **NCU Gym Monitor** Desktop shortcut.
 
-Normal launches use the Project environment's windowed Python executable and the
-single-instance `monitor_entry.pyw` entry point. Only the Widget appears; no
-command prompt remains open.
+Normal launches first use the GUI-based Windows Script Host wrapper, which starts
+the PowerShell Launcher with its window hidden. The Launcher then uses the Project
+environment's windowed Python executable and the single-instance
+`monitor_entry.pyw` entry point. Only the Widget appears; no command prompt flashes
+or remains open.
 
 ## Repair
 
@@ -36,9 +38,11 @@ Desktop shortcut instead of creating duplicates.
 
 ## Launcher diagnostics
 
-The Launcher validates the checkout, Project environment, windowed Python
-executable, Widget entry point, and runtime imports. When startup cannot proceed,
-it displays a native **NCU Gym Monitor** error dialog with a repair instruction.
+The Desktop shortcut targets `wscript.exe` and the repository-owned
+`Launch-NCUGymMonitor.vbs` wrapper so no console process is shown. The PowerShell
+Launcher validates the checkout, Project environment, windowed Python executable,
+Widget entry point, and runtime imports. When startup cannot proceed, it displays
+a native **NCU Gym Monitor** error dialog with a repair instruction.
 
 A repeated launch exits quietly while another Monitor instance is active. After
 the Widget closes, its process-wide guard is released and it can be launched

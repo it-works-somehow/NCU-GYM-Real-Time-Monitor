@@ -10,7 +10,7 @@ Run this bounded test on the target Windows account after automated tests pass.
 - [ ] Inspect the shortcut and confirm it targets the checkout's Launcher and
       uses the checkout as its working directory.
 - [ ] Double-click the shortcut and confirm the Widget opens without a command
-      prompt remaining visible.
+      prompt flashing or remaining visible.
 - [ ] Double-click again and confirm no second Widget, polling loop, or CSV writer
       starts.
 - [ ] Close the Widget, launch it again, and confirm it opens normally.
@@ -23,15 +23,18 @@ Run this bounded test on the target Windows account after automated tests pass.
 
 ## Result
 
-Status: **Passed on 2026-08-06** on the target Windows account.
+Status: **Passed on 2026-08-07** on the target Windows account.
 
 - Setup installed official per-user CPython 3.13.15, created the checkout's
   `.venv`, installed the declared runtime dependencies, and created exactly one
   Desktop shortcut.
 - The shortcut target, arguments, working directory, and icon all referenced the
   intended checkout.
+- The repaired shortcut targets GUI-subsystem `wscript.exe`, which invokes the
+  repository-owned VBS wrapper. A five-second high-frequency launch check found
+  zero visible PowerShell windows while the Widget opened normally.
 - Launching opened a responsive Tk Widget through the Project environment with
-  no command prompt left visible.
+  no command prompt flashing or left visible.
 - Windows represented the one logical Monitor instance as a normal venv
   redirector/CPython parent-child pair. A repeated shortcut launch left the PID
   set unchanged, confirming that no second Monitor instance started.

@@ -97,7 +97,8 @@ per-user CPython runtime when needed. It then creates the Project environment,
 installs the Widget runtime dependencies, and adds an **NCU Gym Monitor** shortcut
 with a green dumbbell icon to your desktop.
 
-Double-click the Desktop shortcut to start the Widget without a command prompt.
+Double-click the Desktop shortcut to start the Widget without a command prompt
+flashing or remaining visible.
 Only one Monitor instance can run at a time. If the checkout is moved or the
 Project environment is damaged, rerun Setup from the checkout's new location.
 

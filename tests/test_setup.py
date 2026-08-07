@@ -33,8 +33,9 @@ class SetupTests(unittest.TestCase):
             self.assertEqual(list(desktop.glob("NCU Gym Monitor*.lnk")), [shortcut_path])
 
             shortcut = self._read_shortcut(shortcut_path)
-            self.assertTrue(shortcut["TargetPath"].lower().endswith("powershell.exe"))
-            self.assertIn("Launch-NCUGymMonitor.ps1", shortcut["Arguments"])
+            self.assertTrue(shortcut["TargetPath"].lower().endswith("wscript.exe"))
+            self.assertEqual(self._pe_subsystem(Path(shortcut["TargetPath"])), 2)
+            self.assertIn("Launch-NCUGymMonitor.vbs", shortcut["Arguments"])
             self.assertEqual(Path(shortcut["WorkingDirectory"]), project)
             self.assertIn("ncu-gym-monitor.ico", shortcut["IconLocation"])
 
@@ -333,6 +334,10 @@ class SetupTests(unittest.TestCase):
             project / "windows" / "Launch-NCUGymMonitor.ps1",
         )
         shutil.copy2(
+            PROJECT_ROOT / "windows" / "Launch-NCUGymMonitor.vbs",
+            project / "windows" / "Launch-NCUGymMonitor.vbs",
+        )
+        shutil.copy2(
             PROJECT_ROOT / "assets" / "ncu-gym-monitor.ico",
             project / "assets" / "ncu-gym-monitor.ico",
         )
@@ -390,6 +395,15 @@ class SetupTests(unittest.TestCase):
             check=True,
         )
         return json.loads(result.stdout)
+
+    def _pe_subsystem(self, executable: Path) -> int:
+        image = executable.read_bytes()
+        pe_offset = int.from_bytes(image[0x3C:0x40], "little")
+        optional_header = pe_offset + 24
+        return int.from_bytes(
+            image[optional_header + 68 : optional_header + 70],
+            "little",
+        )
 
 
 if __name__ == "__main__":
